@@ -21,6 +21,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from config.watchlist import WATCHLIST
+from src.market_data import fetch_bars, fetch_option_chain
 from src.signals import scan_watchlist
 from src.options_selector import select_debit_spread
 from src.execution import size_position, build_order_payload
@@ -30,12 +31,10 @@ from src.journal import log_entry
 def run_once():
     print(f"Scanning {len(WATCHLIST)} tickers: {', '.join(WATCHLIST)}")
 
-    # TODO: replace with real bars pulled via Alpaca (get_stock_bars).
-    # bars_by_ticker = {ticker: fetch_bars(ticker) for ticker in WATCHLIST}
-    bars_by_ticker = {}  # placeholder, no data source wired yet
+    bars_by_ticker = fetch_bars(WATCHLIST)
 
     if not bars_by_ticker:
-        print("No bar data wired up yet. See TODO in run_agent.py.")
+        print("No bar data returned from Alpaca. Skipping this run.")
         return
 
     results = scan_watchlist(bars_by_ticker)
@@ -47,8 +46,7 @@ def run_once():
         if not result.fired:
             continue
 
-        # TODO: replace with real chain data via Alpaca (get_option_chain).
-        option_chain = []  # placeholder
+        option_chain = fetch_option_chain(result.ticker, result.direction)
 
         spread = select_debit_spread(result.ticker, result.direction, option_chain)
         if spread is None:
