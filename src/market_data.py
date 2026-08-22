@@ -13,7 +13,11 @@ import pandas as pd
 from dotenv import load_dotenv
 from alpaca.data.historical import StockHistoricalDataClient
 from alpaca.data.historical.option import OptionHistoricalDataClient
-from alpaca.data.requests import StockBarsRequest, OptionChainRequest
+from alpaca.data.requests import (
+    StockBarsRequest,
+    OptionChainRequest,
+    OptionLatestQuoteRequest,
+)
 from alpaca.data.timeframe import TimeFrame
 from alpaca.data.enums import Adjustment
 from alpaca.trading.enums import ContractType
@@ -29,20 +33,20 @@ ENV_PATH = Path(r"C:\Users\vivek\Desktop\alpaca.env")
 DEFAULT_LOOKBACK_DAYS = 150
 
 
-def _load_credentials() -> tuple[str, str]:
+def load_credentials() -> tuple[str, str]:
     load_dotenv(ENV_PATH)
     return os.environ["ALPACA_API_KEY"], os.environ["ALPACA_SECRET_KEY"]
 
 
 def get_data_client() -> StockHistoricalDataClient:
     """Load Alpaca credentials and construct the stock market data client."""
-    api_key, secret_key = _load_credentials()
+    api_key, secret_key = load_credentials()
     return StockHistoricalDataClient(api_key, secret_key)
 
 
 def get_option_data_client() -> OptionHistoricalDataClient:
     """Load Alpaca credentials and construct the option market data client."""
-    api_key, secret_key = _load_credentials()
+    api_key, secret_key = load_credentials()
     return OptionHistoricalDataClient(api_key, secret_key)
 
 
@@ -131,3 +135,20 @@ def fetch_option_chain(ticker: str, direction: Literal["call", "put"]) -> list[d
         )
 
     return contracts
+
+
+def fetch_option_quotes(symbols: list[str]) -> dict[str, tuple[float, float]]:
+    """
+    Fetch the current bid/ask for a list of option symbols.
+
+    Returns a dict of {symbol: (bid_price, ask_price)}.
+    """
+    client = get_option_data_client()
+
+    request = OptionLatestQuoteRequest(symbol_or_symbols=symbols)
+    quotes = client.get_option_latest_quote(request)
+
+    return {
+        symbol: (quote.bid_price, quote.ask_price)
+        for symbol, quote in quotes.items()
+    }

@@ -21,7 +21,8 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from config.watchlist import WATCHLIST
-from src.market_data import fetch_bars, fetch_option_chain
+from src.market_data import fetch_bars, fetch_option_chain, fetch_option_quotes
+from src.broker import get_account_equity, get_open_spread_count
 from src.signals import scan_watchlist
 from src.options_selector import select_debit_spread
 from src.execution import size_position, build_order_payload
@@ -56,13 +57,33 @@ def run_once():
         log_entry("spread_selected", spread)
         print(f"[{result.ticker}] {spread.reasoning}")
 
-        # TODO: pull real account equity + leg prices before sizing.
-        # plan = size_position(spread, account_equity=..., long_leg_price=...,
-        #                       short_leg_price=..., open_position_count=...)
-        # if plan:
-        #     log_entry("trade_entry", plan)
-        #     payload = build_order_payload(plan)
-        #     # place order via Alpaca MCP tool / alpaca-py client here
+        quotes = fetch_option_quotes([spread.long_leg.symbol, spread.short_leg.symbol])
+        # Buying the long leg: use the ask (the price we'd actually pay).
+        # Selling the short leg: use the bid (the price we'd actually receive).
+        long_leg_price = quotes[spread.long_leg.symbol][1]
+        short_leg_price = quotes[spread.short_leg.symbol][0]
+
+        plan = size_position(
+            spread,
+            account_equity=get_account_equity(),
+            long_leg_price=long_leg_price,
+            short_leg_price=short_leg_price,
+            open_position_count=get_open_spread_count(),
+        )
+        if plan is None:
+            print(f"[{result.ticker}] spread found but sizing rejected it "
+                  f"(position limit reached or risk budget too small).")
+            continue
+
+        log_entry("trade_entry", plan)
+        print(f"[{result.ticker}] {plan.reasoning}")
+
+        payload = build_order_payload(plan)
+        log_entry("order_payload_built", payload)
+
+        # TODO: place the order (place_option_order) once wired to a real
+        # Alpaca trading call. Left as-is for now so no live orders go out
+        # until that's explicitly built and reviewed.
 
 
 if __name__ == "__main__":
