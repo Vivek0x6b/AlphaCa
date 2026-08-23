@@ -4,15 +4,15 @@ Main entry point for a single agent loop pass.
 This is the script the cron job (or a manual run) triggers. It:
   1. Pulls bars for the watchlist
   2. Runs signal detection
-  3. For any fired signal, selects a debit spread and sizes the order
+  3. For any fired signal, selects a debit spread, sizes it, and places
+     the order
   4. Journals every decision along the way
-  5. (checks open positions for exit conditions. TODO once execution
-     is wired to live Alpaca calls)
+  5. (checks open positions for exit conditions. Still a TODO, see
+     CLAUDE_CODE_CONTEXT.md)
 
-Market data / order calls are left as TODOs marked clearly below.
-This script defines the *shape* of the loop; the actual Alpaca calls
-get filled in once wired to Hermes' MCP tools or the alpaca-py client
-directly.
+This version calls Alpaca directly via alpaca-py. Wiring the same logic
+into Hermes' MCP tools, for the live autonomous loop, is a separate later
+step.
 """
 
 import sys
@@ -22,7 +22,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from config.watchlist import WATCHLIST
 from src.market_data import fetch_bars, fetch_option_chain, fetch_option_quotes
-from src.broker import get_account_equity, get_open_spread_count
+from src.broker import get_account_equity, get_open_spread_count, place_debit_spread_order
 from src.signals import scan_watchlist
 from src.options_selector import select_debit_spread
 from src.execution import size_position, build_order_payload
@@ -81,9 +81,9 @@ def run_once():
         payload = build_order_payload(plan)
         log_entry("order_payload_built", payload)
 
-        # TODO: place the order (place_option_order) once wired to a real
-        # Alpaca trading call. Left as-is for now so no live orders go out
-        # until that's explicitly built and reviewed.
+        order = place_debit_spread_order(plan)
+        log_entry("order_submitted", {"order_id": str(order.id), "status": str(order.status)})
+        print(f"[{result.ticker}] order submitted, id={order.id}, status={order.status}")
 
 
 if __name__ == "__main__":
