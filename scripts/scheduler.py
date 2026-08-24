@@ -68,4 +68,7 @@ def run_forever():
 
 
 if __name__ == "__main__":
+    # Flush every print immediately, so status is visible right away even
+    # if output is piped to a file instead of a live terminal.
+    sys.stdout.reconfigure(line_buffering=True)
     run_forever()
