@@ -37,6 +37,8 @@ ENV/
 logs/*.log
 logs/*.jsonl
 !logs/.gitkeep
+data/*.json
+!data/.gitkeep
 
 # --- Editors / OS ---
 .vscode/

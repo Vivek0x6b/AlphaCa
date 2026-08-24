@@ -8,8 +8,8 @@ code just looks at data and which code touches the account.
 """
 
 from alpaca.trading.client import TradingClient
-from alpaca.trading.enums import AssetClass, OrderClass, OrderSide, TimeInForce
-from alpaca.trading.models import Order
+from alpaca.trading.enums import AssetClass, OrderClass, OrderSide, PositionSide, TimeInForce
+from alpaca.trading.models import Order, Position
 from alpaca.trading.requests import LimitOrderRequest, OptionLegRequest
 
 from src.execution import OrderPlan
@@ -86,3 +86,32 @@ def place_debit_spread_order(plan: OrderPlan) -> Order:
 
     client = get_trading_client()
     return client.submit_order(order_request)
+
+
+def get_open_debit_spreads() -> dict[str, dict[str, Position]]:
+    """
+    Group open option positions by underlying ticker.
+
+    Returns {ticker: {"long": Position, "short": Position}}. A ticker
+    with only one leg open (unexpected, but possible if one leg got
+    closed on its own) is left out, since evaluate_exit() needs both
+    legs to compute the spread's current value.
+    """
+    client = get_trading_client()
+    positions = client.get_all_positions()
+    option_positions = [p for p in positions if p.asset_class == AssetClass.US_OPTION]
+
+    grouped: dict[str, dict[str, Position]] = {}
+    for position in option_positions:
+        ticker = _underlying_from_occ_symbol(position.symbol)
+        leg = "long" if position.side == PositionSide.LONG else "short"
+        grouped.setdefault(ticker, {})[leg] = position
+
+    return {ticker: legs for ticker, legs in grouped.items() if "long" in legs and "short" in legs}
+
+
+def close_debit_spread(long_symbol: str, short_symbol: str) -> None:
+    """Close both legs of a debit spread by symbol."""
+    client = get_trading_client()
+    client.close_position(long_symbol)
+    client.close_position(short_symbol)

@@ -2,13 +2,13 @@
 Main entry point for a single agent loop pass.
 
 This is the script the cron job (or a manual run) triggers. It:
-  1. Pulls bars for the watchlist
-  2. Runs signal detection
-  3. For any fired signal, selects a debit spread, sizes it, and places
+  1. Checks open positions for exit conditions, closing any that hit
+     their profit target, stop loss, or thesis invalidation
+  2. Pulls bars for the watchlist
+  3. Runs signal detection
+  4. For any fired signal, selects a debit spread, sizes it, and places
      the order
-  4. Journals every decision along the way
-  5. (checks open positions for exit conditions. Still a TODO, see
-     CLAUDE_CODE_CONTEXT.md)
+  5. Journals every decision along the way
 
 This version calls Alpaca directly via alpaca-py. Wiring the same logic
 into Hermes' MCP tools, for the live autonomous loop, is a separate later
@@ -21,15 +21,69 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from config.watchlist import WATCHLIST
-from src.market_data import fetch_bars, fetch_option_chain, fetch_option_quotes
-from src.broker import get_account_equity, get_open_spread_count, place_debit_spread_order
+from src.market_data import fetch_bars, fetch_option_chain, fetch_option_quotes, fetch_stock_prices
+from src.broker import (
+    get_account_equity,
+    get_open_spread_count,
+    get_open_debit_spreads,
+    place_debit_spread_order,
+    close_debit_spread,
+)
 from src.signals import scan_watchlist
 from src.options_selector import select_debit_spread
 from src.execution import size_position, build_order_payload
+from src.position_manager import evaluate_exit
+from src.trade_store import load_open_trades, save_open_trade, remove_open_trade
 from src.journal import log_entry
 
 
+def check_exits():
+    """Check every open spread we have metadata for and close any that
+    should exit (profit target, stop loss, or thesis invalidation)."""
+    open_trades = load_open_trades()
+    if not open_trades:
+        print("No open trades to check.")
+        return
+
+    spreads = get_open_debit_spreads()
+    current_prices = fetch_stock_prices(list(open_trades.keys()))
+
+    for ticker, meta in open_trades.items():
+        if ticker not in spreads:
+            # We think we have a trade open, but Alpaca shows no matching
+            # pair of legs (e.g. it was closed manually). Drop our record
+            # of it rather than checking a trade that no longer exists.
+            remove_open_trade(ticker)
+            continue
+
+        long_leg = spreads[ticker]["long"]
+        short_leg = spreads[ticker]["short"]
+
+        entry_debit = (float(long_leg.avg_entry_price) - float(short_leg.avg_entry_price)) * 100
+        current_value = (float(long_leg.current_price) - float(short_leg.current_price)) * 100
+
+        decision = evaluate_exit(
+            ticker=ticker,
+            direction=meta["direction"],
+            entry_debit=entry_debit,
+            current_value=current_value,
+            current_price=current_prices[ticker],
+            breakout_level=meta["breakout_level"],
+        )
+        log_entry("exit_check", decision)
+        print(f"[{ticker}] {decision.reasoning}")
+
+        if decision.should_exit:
+            close_debit_spread(long_leg.symbol, short_leg.symbol)
+            remove_open_trade(ticker)
+            log_entry("trade_exit", decision)
+            print(f"[{ticker}] closed both legs.")
+
+
 def run_once():
+    print("Checking open positions for exits...")
+    check_exits()
+
     print(f"Scanning {len(WATCHLIST)} tickers: {', '.join(WATCHLIST)}")
 
     bars_by_ticker = fetch_bars(WATCHLIST)
@@ -84,6 +138,8 @@ def run_once():
         order = place_debit_spread_order(plan)
         log_entry("order_submitted", {"order_id": str(order.id), "status": str(order.status)})
         print(f"[{result.ticker}] order submitted, id={order.id}, status={order.status}")
+
+        save_open_trade(result.ticker, result.direction, result.breakout_level)
 
 
 if __name__ == "__main__":

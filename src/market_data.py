@@ -15,6 +15,7 @@ from alpaca.data.historical import StockHistoricalDataClient
 from alpaca.data.historical.option import OptionHistoricalDataClient
 from alpaca.data.requests import (
     StockBarsRequest,
+    StockLatestTradeRequest,
     OptionChainRequest,
     OptionLatestQuoteRequest,
 )
@@ -135,6 +136,16 @@ def fetch_option_chain(ticker: str, direction: Literal["call", "put"]) -> list[d
         )
 
     return contracts
+
+
+def fetch_stock_prices(tickers: list[str]) -> dict[str, float]:
+    """Fetch the current (latest trade) price for a list of stock tickers."""
+    client = get_data_client()
+
+    request = StockLatestTradeRequest(symbol_or_symbols=tickers)
+    trades = client.get_stock_latest_trade(request)
+
+    return {ticker: trade.price for ticker, trade in trades.items()}
 
 
 def fetch_option_quotes(symbols: list[str]) -> dict[str, tuple[float, float]]:
