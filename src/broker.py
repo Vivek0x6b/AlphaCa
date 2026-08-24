@@ -7,13 +7,22 @@ ever reads prices. Keeping them apart makes it obvious at a glance which
 code just looks at data and which code touches the account.
 """
 
+import time
+
 from alpaca.trading.client import TradingClient
-from alpaca.trading.enums import AssetClass, OrderClass, OrderSide, PositionSide, TimeInForce
+from alpaca.trading.enums import (
+    AssetClass,
+    OrderClass,
+    OrderSide,
+    PositionIntent,
+    PositionSide,
+    TimeInForce,
+)
 from alpaca.trading.models import Order, Position
 from alpaca.trading.requests import LimitOrderRequest, OptionLegRequest
 
 from src.execution import OrderPlan
-from src.market_data import load_credentials
+from src.market_data import load_credentials, fetch_option_quotes
 
 
 def get_trading_client() -> TradingClient:
@@ -110,8 +119,58 @@ def get_open_debit_spreads() -> dict[str, dict[str, Position]]:
     return {ticker: legs for ticker, legs in grouped.items() if "long" in legs and "short" in legs}
 
 
-def close_debit_spread(long_symbol: str, short_symbol: str) -> None:
-    """Close both legs of a debit spread by symbol."""
+def close_debit_spread(long_symbol: str, short_symbol: str, qty: int) -> None:
+    """
+    Close both legs of a debit spread by symbol.
+
+    Uses explicit closing orders (submit_order with position_intent set)
+    rather than Alpaca's close_position() convenience method. Confirmed
+    live: close_position() fails with "account not eligible to trade
+    uncovered option contracts" even for a plain sell-to-close of a long
+    option with zero short positions anywhere in the account. It doesn't
+    tag the order's position_intent, and this account's options approval
+    level (3: spreads, not 4: uncovered) apparently needs that explicit
+    tag to recognize the order as closing rather than potentially
+    opening a naked position. Setting position_intent directly fixes it.
+
+    Closes the short leg first, then the long leg, as further defense in
+    depth (closing a short can never increase short exposure). Waits
+    briefly between the two orders: confirmed live that submitting the
+    long leg's close immediately after the short leg's close can still
+    be rejected as uncovered, because the account hasn't finished
+    processing the short leg's close yet. A couple seconds is enough
+    for the position update to land before the second order is sent.
+
+    Prices both legs to be immediately marketable (sell the long at its
+    bid, buy back the short at its ask) since an exit should execute
+    promptly rather than wait for a better price, unlike an entry.
+    """
+    quotes = fetch_option_quotes([long_symbol, short_symbol])
+    long_bid = quotes[long_symbol][0]
+    short_ask = quotes[short_symbol][1]
+
     client = get_trading_client()
-    client.close_position(long_symbol)
-    client.close_position(short_symbol)
+
+    client.submit_order(
+        LimitOrderRequest(
+            symbol=short_symbol,
+            qty=qty,
+            side=OrderSide.BUY,
+            type="limit",
+            time_in_force=TimeInForce.DAY,
+            limit_price=short_ask,
+            position_intent=PositionIntent.BUY_TO_CLOSE,
+        )
+    )
+    time.sleep(2)
+    client.submit_order(
+        LimitOrderRequest(
+            symbol=long_symbol,
+            qty=qty,
+            side=OrderSide.SELL,
+            type="limit",
+            time_in_force=TimeInForce.DAY,
+            limit_price=long_bid,
+            position_intent=PositionIntent.SELL_TO_CLOSE,
+        )
+    )

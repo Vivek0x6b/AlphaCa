@@ -74,7 +74,8 @@ def check_exits():
         print(f"[{ticker}] {decision.reasoning}")
 
         if decision.should_exit:
-            close_debit_spread(long_leg.symbol, short_leg.symbol)
+            qty = abs(int(float(long_leg.qty)))
+            close_debit_spread(long_leg.symbol, short_leg.symbol, qty)
             remove_open_trade(ticker)
             log_entry("trade_exit", decision)
             print(f"[{ticker}] closed both legs.")
