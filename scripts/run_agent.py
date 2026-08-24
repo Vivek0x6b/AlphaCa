@@ -95,6 +95,14 @@ def run_once():
 
     results = scan_watchlist(bars_by_ticker)
 
+    # Fetched once per run, then tracked locally as trades open below. A
+    # freshly placed order won't have filled yet, so re-fetching this
+    # from Alpaca on every loop iteration wouldn't see it - meaning if
+    # two tickers fire in the same run, the position limit wouldn't
+    # actually stop a third or fourth entry. Tracking it locally fixes
+    # that.
+    open_position_count = get_open_spread_count()
+
     for result in results:
         log_entry("signal_check", result)
         print(f"[{result.ticker}] fired={result.fired}: {result.reasoning}")
@@ -123,7 +131,7 @@ def run_once():
             account_equity=get_account_equity(),
             long_leg_price=long_leg_price,
             short_leg_price=short_leg_price,
-            open_position_count=get_open_spread_count(),
+            open_position_count=open_position_count,
         )
         if plan is None:
             print(f"[{result.ticker}] spread found but sizing rejected it "
@@ -141,6 +149,7 @@ def run_once():
         print(f"[{result.ticker}] order submitted, id={order.id}, status={order.status}")
 
         save_open_trade(result.ticker, result.direction, result.breakout_level)
+        open_position_count += 1
 
 
 if __name__ == "__main__":
