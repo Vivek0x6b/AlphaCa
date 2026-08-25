@@ -20,6 +20,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+from alpaca.trading.enums import OrderStatus
+
 from config.watchlist import WATCHLIST
 from src.market_data import fetch_bars, fetch_option_chain, fetch_option_quotes, fetch_stock_prices
 from src.broker import (
@@ -148,8 +150,16 @@ def run_once():
         log_entry("order_submitted", {"order_id": str(order.id), "status": str(order.status)})
         print(f"[{result.ticker}] order submitted, id={order.id}, status={order.status}")
 
-        save_open_trade(result.ticker, result.direction, result.breakout_level)
-        open_position_count += 1
+        # Alpaca can return an order that was never actually accepted
+        # (rejected/canceled/expired) without raising an exception. Only
+        # count it toward the same-run position limit, and only remember
+        # it for later exit-checking, if it's actually live.
+        if order.status in (OrderStatus.REJECTED, OrderStatus.CANCELED, OrderStatus.EXPIRED):
+            print(f"[{result.ticker}] order was not accepted (status={order.status}), "
+                  f"not counting it toward the position limit.")
+        else:
+            save_open_trade(result.ticker, result.direction, result.breakout_level)
+            open_position_count += 1
 
 
 if __name__ == "__main__":
