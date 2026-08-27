@@ -44,6 +44,11 @@ def select_debit_spread(
     ticker: str,
     direction: Literal["call", "put"],
     option_chain: list[dict],
+    as_of_date: date | None = None,
+    long_leg_delta_range: tuple[float, float] = LONG_LEG_DELTA_RANGE,
+    short_leg_delta_range: tuple[float, float] = SHORT_LEG_DELTA_RANGE,
+    min_days_to_expiry: int = MIN_DAYS_TO_EXPIRY,
+    max_days_to_expiry: int = MAX_DAYS_TO_EXPIRY,
 ) -> DebitSpread | None:
     """
     Pick long/short legs for a debit spread from an option chain.
@@ -56,30 +61,42 @@ def select_debit_spread(
         get_option_chain / get_option_contracts tools. Expected to
         include at least: symbol, strike_price, expiration_date,
         delta, option_type.
+    as_of_date: the date to measure days-to-expiry from. Defaults to
+        today, for live use. The backtester passes a simulated past date,
+        so this same function can be reused unchanged for both.
+    long_leg_delta_range, short_leg_delta_range, min_days_to_expiry,
+    max_days_to_expiry: default to the live strategy's config values.
+        Overridable so the backtester can sweep these without touching
+        live config.
 
     Returns
     -------
     DebitSpread or None if no suitable contracts were found.
     """
+    if as_of_date is None:
+        as_of_date = date.today()
+
     option_type = "call" if direction == "call" else "put"
 
     candidates = [
         c
         for c in option_chain
         if c.get("option_type") == option_type
-        and _within_expiry_window(c.get("expiration_date"))
+        and _within_expiry_window(
+            c.get("expiration_date"), as_of_date, min_days_to_expiry, max_days_to_expiry
+        )
     ]
 
     if not candidates:
         return None
 
     long_candidates = [
-        c for c in candidates if _delta_in_range(c.get("delta"), LONG_LEG_DELTA_RANGE)
+        c for c in candidates if _delta_in_range(c.get("delta"), long_leg_delta_range)
     ]
     short_candidates = [
         c
         for c in candidates
-        if _delta_in_range(c.get("delta"), SHORT_LEG_DELTA_RANGE)
+        if _delta_in_range(c.get("delta"), short_leg_delta_range)
     ]
 
     if not long_candidates or not short_candidates:
@@ -129,11 +146,13 @@ def select_debit_spread(
     )
 
 
-def _within_expiry_window(expiration_date: str | None) -> bool:
+def _within_expiry_window(
+    expiration_date: str | None, as_of_date: date, min_days: int, max_days: int
+) -> bool:
     if not expiration_date:
         return False
-    days_out = (date.fromisoformat(expiration_date) - date.today()).days
-    return MIN_DAYS_TO_EXPIRY <= days_out <= MAX_DAYS_TO_EXPIRY
+    days_out = (date.fromisoformat(expiration_date) - as_of_date).days
+    return min_days <= days_out <= max_days
 
 
 def _delta_in_range(delta: float | None, delta_range: tuple[float, float]) -> bool:

@@ -35,7 +35,14 @@ RELATIVE_VOLUME_MULTIPLIER = 1.5
 
 # Target delta ranges for the debit spread legs.
 LONG_LEG_DELTA_RANGE = (0.40, 0.50)
-SHORT_LEG_DELTA_RANGE = (0.15, 0.20)
+
+# Short leg lowered from (0.15, 0.20) after backtesting (see
+# docs/designs/autonomous-backtest-retuning.md): a further out-of-the-money
+# short leg widens the spread, giving more room to profit if the move
+# continues. Improved the calls-only backtest from +3.09% to +4.07% over
+# the same 2-year window and 39 trades; a swept delta/expiry range of
+# alternatives around this one all underperformed it.
+SHORT_LEG_DELTA_RANGE = (0.10, 0.15)
 
 # Expiration window (calendar days out).
 MIN_DAYS_TO_EXPIRY = 14
@@ -48,3 +55,14 @@ POSITION_SIZE_PCT = 0.02
 
 # Maximum number of concurrent open positions.
 MAX_CONCURRENT_POSITIONS = 3
+
+# --- Direction ---
+
+# Whether put (bearish breakdown) trades are actually taken. Backtesting
+# (see docs/designs/autonomous-backtest-retuning.md) found puts
+# underperformed calls consistently across 5 of 7 watchlist tickers over a
+# 2-year window (avg forward return -4.36% vs +2.64% for calls), and a
+# calls-only backtest was profitable (+3.09%) where the bidirectional
+# version was not. Put signals still fire and get journaled (signals.py is
+# unchanged), they're just not traded while this is False.
+PUT_TRADING_ENABLED = False

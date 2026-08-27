@@ -22,7 +22,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from alpaca.trading.enums import OrderStatus
 
-from config.watchlist import WATCHLIST
+from config.watchlist import WATCHLIST, PUT_TRADING_ENABLED
 from src.market_data import fetch_bars, fetch_option_chain, fetch_option_quotes, fetch_stock_prices
 from src.broker import (
     get_account_equity,
@@ -110,6 +110,11 @@ def run_once():
         print(f"[{result.ticker}] fired={result.fired}: {result.reasoning}")
 
         if not result.fired:
+            continue
+
+        if result.direction == "put" and not PUT_TRADING_ENABLED:
+            print(f"[{result.ticker}] put signal fired but put trading is disabled "
+                  f"(backtesting found puts underperform calls). Not trading it.")
             continue
 
         option_chain = fetch_option_chain(result.ticker, result.direction)
