@@ -110,11 +110,23 @@ def run_once():
     # that.
     open_position_count = get_open_spread_count()
 
+    # Tickers already carrying a position never get a second one. Checked
+    # against both our own trade record and Alpaca's real positions (a
+    # ticker can be missing from one but not the other after a bug or
+    # manual intervention), fetched fresh after check_exits() above so a
+    # position closed this run frees up its ticker again the same day.
+    already_open_tickers = set(load_open_trades()) | set(get_open_debit_spreads())
+
     for result in results:
         log_entry("signal_check", result)
         print(f"[{result.ticker}] fired={result.fired}: {result.reasoning}")
 
         if not result.fired:
+            continue
+
+        if result.ticker in already_open_tickers:
+            print(f"[{result.ticker}] signal fired but this ticker already has "
+                  f"an open position. Skipping to avoid doubling up.")
             continue
 
         if result.direction == "put" and not PUT_TRADING_ENABLED:
