@@ -36,10 +36,11 @@ from src.options_selector import select_debit_spread
 from src.execution import size_position, build_order_payload
 from src.position_manager import evaluate_exit
 from src.trade_store import load_open_trades, save_open_trade, remove_open_trade
+from src.strategy_params import load_params
 from src.journal import log_entry
 
 
-def check_exits():
+def check_exits(params: dict):
     """Check every open spread we have metadata for and close any that
     should exit (profit target, stop loss, or thesis invalidation)."""
     open_trades = load_open_trades()
@@ -71,6 +72,8 @@ def check_exits():
             current_value=current_value,
             current_price=current_prices[ticker],
             breakout_level=meta["breakout_level"],
+            profit_target_pct=params["profit_target_pct"],
+            stop_loss_pct=params["stop_loss_pct"],
         )
         log_entry("exit_check", decision)
         print(f"[{ticker}] {decision.reasoning}")
@@ -84,8 +87,10 @@ def check_exits():
 
 
 def run_once():
+    params = load_params()
+
     print("Checking open positions for exits...")
-    check_exits()
+    check_exits(params)
 
     print(f"Scanning {len(WATCHLIST)} tickers: {', '.join(WATCHLIST)}")
 
@@ -117,9 +122,22 @@ def run_once():
                   f"(backtesting found puts underperform calls). Not trading it.")
             continue
 
-        option_chain = fetch_option_chain(result.ticker, result.direction)
+        option_chain = fetch_option_chain(
+            result.ticker,
+            result.direction,
+            min_days_to_expiry=params["min_days_to_expiry"],
+            max_days_to_expiry=params["max_days_to_expiry"],
+        )
 
-        spread = select_debit_spread(result.ticker, result.direction, option_chain)
+        spread = select_debit_spread(
+            result.ticker,
+            result.direction,
+            option_chain,
+            long_leg_delta_range=params["long_leg_delta_range"],
+            short_leg_delta_range=params["short_leg_delta_range"],
+            min_days_to_expiry=params["min_days_to_expiry"],
+            max_days_to_expiry=params["max_days_to_expiry"],
+        )
         if spread is None:
             print(f"[{result.ticker}] signal fired but no suitable spread found.")
             continue

@@ -91,6 +91,8 @@ def run_backtest(
     short_leg_delta_range: tuple[float, float] = None,
     min_days_to_expiry: int = MIN_DAYS_TO_EXPIRY,
     max_days_to_expiry: int = MAX_DAYS_TO_EXPIRY,
+    profit_target_pct: float = None,
+    stop_loss_pct: float = None,
 ):
     """
     Run the backtest. Parameters default to the live strategy's config
@@ -98,11 +100,16 @@ def run_backtest(
     re-fetching from Alpaca) to sweep parameters cheaply.
     """
     from config.watchlist import LONG_LEG_DELTA_RANGE, SHORT_LEG_DELTA_RANGE
+    from src.position_manager import PROFIT_TARGET_PCT, STOP_LOSS_PCT
 
     if long_leg_delta_range is None:
         long_leg_delta_range = LONG_LEG_DELTA_RANGE
     if short_leg_delta_range is None:
         short_leg_delta_range = SHORT_LEG_DELTA_RANGE
+    if profit_target_pct is None:
+        profit_target_pct = PROFIT_TARGET_PCT
+    if stop_loss_pct is None:
+        stop_loss_pct = STOP_LOSS_PCT
 
     if bars_by_ticker is None:
         print(f"Fetching {BACKTEST_LOOKBACK_DAYS} days of history for {len(WATCHLIST)} tickers...")
@@ -160,6 +167,8 @@ def run_backtest(
                     current_value=current_value,
                     current_price=current_price,
                     breakout_level=pos.breakout_level,
+                    profit_target_pct=profit_target_pct,
+                    stop_loss_pct=stop_loss_pct,
                 )
                 should_exit, reason = decision.should_exit, decision.reason
 

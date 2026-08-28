@@ -23,6 +23,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from alpaca.trading.requests import GetCalendarRequest
 
 from scripts.run_agent import run_once
+from scripts.retune import run_retune
 from src.broker import get_trading_client
 
 EASTERN = ZoneInfo("America/New_York")
@@ -61,6 +62,8 @@ def run_forever():
 
         run_date = datetime.now(EASTERN).date()
         if is_trading_day(run_date):
+            print(f"Re-tuning strategy parameters for {run_date}...")
+            run_retune()
             print(f"Running agent loop for {run_date}...")
             run_once()
         else:

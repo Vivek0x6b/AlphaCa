@@ -98,14 +98,22 @@ def _parse_occ_symbol(symbol: str) -> tuple[date, Literal["call", "put"], float]
     return expiry, option_type, strike
 
 
-def fetch_option_chain(ticker: str, direction: Literal["call", "put"]) -> list[dict]:
+def fetch_option_chain(
+    ticker: str,
+    direction: Literal["call", "put"],
+    min_days_to_expiry: int = MIN_DAYS_TO_EXPIRY,
+    max_days_to_expiry: int = MAX_DAYS_TO_EXPIRY,
+) -> list[dict]:
     """
     Fetch an option chain for one ticker, shaped for options_selector.py.
 
     Only asks Alpaca for calls or puts (matching direction), and only for
-    expirations inside the strategy's expiry window (config/watchlist.py).
-    Contracts with no delta available (illiquid, no recent trade) are left
-    out, since options_selector.py can't filter by delta without one.
+    expirations inside the strategy's expiry window. Defaults to
+    config/watchlist.py; overridable so the expiry window can come from
+    the mutable strategy_params.py file instead, once the autonomous
+    re-tuner is adjusting it. Contracts with no delta available (illiquid,
+    no recent trade) are left out, since options_selector.py can't filter
+    by delta without one.
 
     Returns a list of dicts with: symbol, strike_price, expiration_date
     (ISO string), delta, option_type.
@@ -115,8 +123,8 @@ def fetch_option_chain(ticker: str, direction: Literal["call", "put"]) -> list[d
     request = OptionChainRequest(
         underlying_symbol=ticker,
         type=ContractType.CALL if direction == "call" else ContractType.PUT,
-        expiration_date_gte=date.today() + timedelta(days=MIN_DAYS_TO_EXPIRY),
-        expiration_date_lte=date.today() + timedelta(days=MAX_DAYS_TO_EXPIRY),
+        expiration_date_gte=date.today() + timedelta(days=min_days_to_expiry),
+        expiration_date_lte=date.today() + timedelta(days=max_days_to_expiry),
     )
     chain = client.get_option_chain(request)
 
